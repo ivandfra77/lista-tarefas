@@ -1,6 +1,9 @@
 import argparse
 import json
 import os
+from datetime import date, datetime
+
+FORMATO_DATA = "%Y-%m-%d"
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tasks.json")
 
@@ -23,12 +26,26 @@ def next_id(tasks):
     return max(t["id"] for t in tasks) + 1
 
 
-def add_task(description):
+def validar_data(valor):
+    try:
+        datetime.strptime(valor, FORMATO_DATA)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"data inválida '{valor}', use o formato AAAA-MM-DD")
+    return valor
+
+
+def add_task(description, prazo):
     tasks = load_tasks()
-    task = {"id": next_id(tasks), "description": description, "done": False}
+    task = {
+        "id": next_id(tasks),
+        "description": description,
+        "done": False,
+        "prazo": prazo,
+        "concluida_em": None,
+    }
     tasks.append(task)
     save_tasks(tasks)
-    print(f"Tarefa {task['id']} adicionada: {description}")
+    print(f"Tarefa {task['id']} adicionada: {description} (prazo: {prazo})")
 
 
 def list_tasks():
@@ -45,7 +62,13 @@ def list_tasks():
     print()
 
     tasks_ordenadas = pendentes + concluidas
-    linhas = [f"[{'x' if t['done'] else ' '}] {t['id']}: {t['description']}" for t in tasks_ordenadas]
+    linhas = []
+    for t in tasks_ordenadas:
+        status = "x" if t["done"] else " "
+        linha = f"[{status}] {t['id']}: {t['description']} (prazo: {t.get('prazo') or '-'})"
+        if t["done"] and t.get("concluida_em"):
+            linha += f" — concluída em {t['concluida_em']}"
+        linhas.append(linha)
     print("\n\n".join(linhas))
 
 
@@ -54,8 +77,9 @@ def complete_task(task_id):
     for t in tasks:
         if t["id"] == task_id:
             t["done"] = True
+            t["concluida_em"] = date.today().strftime(FORMATO_DATA)
             save_tasks(tasks)
-            print(f"Tarefa {task_id} concluída.")
+            print(f"Tarefa {task_id} concluída em {t['concluida_em']}.")
             return
     print(f"Tarefa {task_id} não encontrada.")
 
@@ -76,6 +100,9 @@ def build_parser():
 
     add_parser = subparsers.add_parser("add", help="Adicionar tarefa")
     add_parser.add_argument("description", nargs="+", help="Descrição da tarefa")
+    add_parser.add_argument(
+        "--prazo", required=True, type=validar_data, help="Prazo máximo no formato AAAA-MM-DD"
+    )
 
     subparsers.add_parser("list", help="Listar tarefas")
 
@@ -93,7 +120,7 @@ def main():
     args = parser.parse_args()
 
     if args.command == "add":
-        add_task(" ".join(args.description))
+        add_task(" ".join(args.description), args.prazo)
     elif args.command == "list":
         list_tasks()
     elif args.command == "done":
